@@ -1,0 +1,277 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.24;
+
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
+import {Ownable2Step} from "@openzeppelin/contracts/access/Ownable2Step.sol";
+import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+
+/// @title ClawdIntern — rotating growth-intern terms rewarded in CLAWD
+///
+/// An intern address is appointed for a fixed term. A CLAWD budget is locked
+/// at open. The owner marks the token's USD price at open (markIn) and at
+/// close (markOut). If the price went up, the intern earns a share of the
+/// budget proportional to the gain (capped at gainCapBps, which earns the full
+/// budget), streamed linearly over streamLength. Getting paid in CLAWD over a
+/// month is the alignment mechanism: a pump that collapses collapses the
+/// intern's own payout.
+///
+/// Phase 0 trust model (deliberate, documented): the OWNER is trusted to
+/// provide honest marks and not to cancel a term in bad faith. Every mark is
+/// emitted onchain so dishonest marks are publicly provable against any chart.
+/// The mark parameters are designed to be replaced by an oracle in a later
+/// phase without changing the term/stream machinery.
+contract ClawdIntern is Ownable2Step, ReentrancyGuard {
+    using SafeERC20 for IERC20;
+
+    uint256 public constant BPS = 10_000;
+
+    IERC20 public immutable clawd;
+
+    /// @notice gain (in bps of markIn) that earns the full budget; captured
+    /// per-term at open so a param change never alters an open deal.
+    uint256 public gainCapBps;
+    /// @notice vesting stream duration for future terms; captured per-term.
+    uint64 public streamLength;
+    /// @notice cooldown: an intern can't be reappointed until this many
+    /// seconds after their last term ended. 0 disables.
+    uint64 public cooldown;
+
+    struct Term {
+        address intern;
+        uint64 start;
+        uint64 end; // scheduled term end (close allowed at/after)
+        uint64 closedAt; // 0 until closed; the stream starts here
+        uint64 streamLen; // captured at open
+        uint256 capBps; // captured at open
+        uint256 markIn; // owner-provided USD price (1e18) at open
+        uint256 markOut; // owner-provided USD price (1e18) at close
+        uint256 budget; // CLAWD locked at open
+        uint256 payout; // CLAWD awarded at close (<= budget)
+        uint256 claimed; // CLAWD already released to the intern
+        bool cancelled;
+        bool slashed;
+    }
+
+    Term[] public terms;
+
+    uint256 public constant NONE = type(uint256).max;
+    uint256 public activeTermId = NONE;
+
+    /// @notice timestamp each intern's last term ended (for cooldown).
+    mapping(address => uint64) public lastTermEnd;
+
+    event TermOpened(
+        uint256 indexed termId,
+        address indexed intern,
+        uint256 markIn,
+        uint256 budget,
+        uint64 start,
+        uint64 end,
+        uint256 capBps,
+        uint64 streamLen
+    );
+    event TermClosed(uint256 indexed termId, uint256 markOut, uint256 gainBps, uint256 payout, uint256 surplus);
+    event TermCancelled(uint256 indexed termId, uint256 returned);
+    event Claimed(uint256 indexed termId, address indexed intern, uint256 amount);
+    event Slashed(uint256 indexed termId, uint256 vestedKept, uint256 returned);
+    event ParamsUpdated(uint256 gainCapBps, uint64 streamLength, uint64 cooldown);
+
+    error ZeroAddress();
+    error ZeroAmount();
+    error TermAlreadyActive();
+    error NoActiveTerm();
+    error TermStillRunning();
+    error TermNotClosed();
+    error TermAlreadySettled();
+    error NothingToClaim();
+    error NothingToSlash();
+    error InternOnCooldown();
+    error CannotRescueClawd();
+    error TransferAmountMismatch();
+
+    constructor(IERC20 _clawd, address _owner, uint256 _gainCapBps, uint64 _streamLength, uint64 _cooldown)
+        Ownable(_owner)
+    {
+        if (address(_clawd) == address(0)) revert ZeroAddress();
+        if (_gainCapBps == 0) revert ZeroAmount();
+        if (_streamLength == 0) revert ZeroAmount();
+        clawd = _clawd;
+        gainCapBps = _gainCapBps;
+        streamLength = _streamLength;
+        cooldown = _cooldown;
+    }
+
+    // ---------------------------------------------------------------- admin
+
+    /// @notice Open a term: appoint `intern`, lock `budget` CLAWD (pulled from
+    /// the owner), record the owner-observed USD price `markIn` (1e18).
+    function openTerm(address intern, uint256 markIn, uint256 budget, uint64 termLength)
+        external
+        onlyOwner
+        returns (uint256 termId)
+    {
+        if (activeTermId != NONE) revert TermAlreadyActive();
+        if (intern == address(0)) revert ZeroAddress();
+        if (markIn == 0 || budget == 0 || termLength == 0) revert ZeroAmount();
+        uint64 last = lastTermEnd[intern];
+        if (last != 0 && block.timestamp < uint256(last) + cooldown) revert InternOnCooldown();
+
+        termId = terms.length;
+        uint64 start = uint64(block.timestamp);
+        uint64 end = start + termLength;
+        terms.push(
+            Term({
+                intern: intern,
+                start: start,
+                end: end,
+                closedAt: 0,
+                streamLen: streamLength,
+                capBps: gainCapBps,
+                markIn: markIn,
+                markOut: 0,
+                budget: budget,
+                payout: 0,
+                claimed: 0,
+                cancelled: false,
+                slashed: false
+            })
+        );
+        activeTermId = termId;
+        emit TermOpened(termId, intern, markIn, budget, start, end, gainCapBps, streamLength);
+
+        uint256 balBefore = clawd.balanceOf(address(this));
+        clawd.safeTransferFrom(msg.sender, address(this), budget);
+        if (clawd.balanceOf(address(this)) - balBefore != budget) revert TransferAmountMismatch();
+    }
+
+    /// @notice Close the active term at/after its scheduled end with the
+    /// owner-observed USD price `markOut` (1e18). Computes the payout, opens
+    /// the stream, and returns any surplus budget to the owner.
+    function closeTerm(uint256 markOut) external onlyOwner nonReentrant {
+        uint256 termId = activeTermId;
+        if (termId == NONE) revert NoActiveTerm();
+        if (markOut == 0) revert ZeroAmount();
+        Term storage t = terms[termId];
+        if (block.timestamp < t.end) revert TermStillRunning();
+
+        uint256 gainBps = markOut > t.markIn ? ((markOut - t.markIn) * BPS) / t.markIn : 0;
+        if (gainBps > t.capBps) gainBps = t.capBps;
+        uint256 payout = (t.budget * gainBps) / t.capBps;
+        uint256 surplus = t.budget - payout;
+
+        t.markOut = markOut;
+        t.payout = payout;
+        t.closedAt = uint64(block.timestamp);
+        activeTermId = NONE;
+        lastTermEnd[t.intern] = uint64(block.timestamp);
+        emit TermClosed(termId, markOut, gainBps, payout, surplus);
+
+        if (surplus > 0) clawd.safeTransfer(owner(), surplus);
+    }
+
+    /// @notice Mid-term kill switch (rogue intern / emergency): returns the
+    /// full budget to the owner, no payout. Phase 0 accepts that the owner
+    /// can end a term in bad faith — the event trail makes it public.
+    function cancelTerm() external onlyOwner nonReentrant {
+        uint256 termId = activeTermId;
+        if (termId == NONE) revert NoActiveTerm();
+        Term storage t = terms[termId];
+
+        t.cancelled = true;
+        activeTermId = NONE;
+        lastTermEnd[t.intern] = uint64(block.timestamp);
+        emit TermCancelled(termId, t.budget);
+
+        clawd.safeTransfer(owner(), t.budget);
+    }
+
+    /// @notice Cancel the unvested remainder of a closed term's stream
+    /// (manipulation / agreement breach). The intern keeps what has vested.
+    function slash(uint256 termId) external onlyOwner nonReentrant {
+        Term storage t = terms[termId];
+        if (t.closedAt == 0) revert TermNotClosed();
+        if (t.slashed) revert TermAlreadySettled();
+
+        uint256 vested = _vested(t);
+        uint256 returned = t.payout - vested;
+        if (returned == 0) revert NothingToSlash();
+
+        t.payout = vested;
+        t.slashed = true;
+        emit Slashed(termId, vested, returned);
+
+        clawd.safeTransfer(owner(), returned);
+    }
+
+    /// @notice Update params for FUTURE terms only (open terms captured theirs).
+    function setParams(uint256 _gainCapBps, uint64 _streamLength, uint64 _cooldown) external onlyOwner {
+        if (_gainCapBps == 0 || _streamLength == 0) revert ZeroAmount();
+        gainCapBps = _gainCapBps;
+        streamLength = _streamLength;
+        cooldown = _cooldown;
+        emit ParamsUpdated(_gainCapBps, _streamLength, _cooldown);
+    }
+
+    /// @notice Recover tokens sent here by mistake. Never the reward token —
+    /// stream obligations live in this contract's CLAWD balance.
+    function rescue(IERC20 token, address to, uint256 amount) external onlyOwner {
+        if (address(token) == address(clawd)) revert CannotRescueClawd();
+        if (to == address(0)) revert ZeroAddress();
+        token.safeTransfer(to, amount);
+    }
+
+    // ---------------------------------------------------------------- claims
+
+    /// @notice Release vested CLAWD to a term's intern. Permissionless — the
+    /// tokens can only ever go to the intern (same pattern as clawd-vesting).
+    function claim(uint256 termId) external nonReentrant {
+        Term storage t = terms[termId];
+        if (t.closedAt == 0) revert TermNotClosed();
+
+        uint256 amount = _vested(t) - t.claimed;
+        if (amount == 0) revert NothingToClaim();
+
+        t.claimed += amount;
+        emit Claimed(termId, t.intern, amount);
+
+        clawd.safeTransfer(t.intern, amount);
+    }
+
+    // ----------------------------------------------------------------- views
+
+    /// @notice Vested-but-unclaimed CLAWD for a term.
+    function claimable(uint256 termId) external view returns (uint256) {
+        Term storage t = terms[termId];
+        if (t.closedAt == 0) return 0;
+        return _vested(t) - t.claimed;
+    }
+
+    /// @notice The one call the utility layer (tweet bot, credits, SIWE gate)
+    /// makes. `endsAt` is the scheduled end — callers decide whether an
+    /// unclosed-but-expired term still confers privileges (it shouldn't).
+    function currentIntern() external view returns (address intern, uint256 termId, uint64 endsAt) {
+        uint256 id = activeTermId;
+        if (id == NONE) return (address(0), NONE, 0);
+        Term storage t = terms[id];
+        return (t.intern, id, t.end);
+    }
+
+    function termCount() external view returns (uint256) {
+        return terms.length;
+    }
+
+    function getTerm(uint256 termId) external view returns (Term memory) {
+        return terms[termId];
+    }
+
+    // ------------------------------------------------------------- internals
+
+    function _vested(Term storage t) internal view returns (uint256) {
+        if (t.slashed) return t.payout; // payout was reduced to vested at slash
+        uint256 elapsed = block.timestamp - t.closedAt;
+        if (elapsed >= t.streamLen) return t.payout;
+        return (t.payout * elapsed) / t.streamLen;
+    }
+}

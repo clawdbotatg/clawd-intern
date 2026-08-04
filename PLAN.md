@@ -86,7 +86,19 @@ term ends
 - `streamLength`: 30 days, linear, starts at term end
 - `cooldown`: an address can't be intern again for N terms
 
-### Price source: TWAP, denominated right
+### Price source — Phase 0 decision (2026-08-03): admin marks
+
+Austin's call: **the owner provides the price at open and close.** Since the
+admin picks the timing, nobody can flash-loan "the moment of the mark" — there
+is no onchain read to attack. This deletes the entire oracle problem for
+Phase 0 (which matters extra because the deep pool is V4 with no native TWAP —
+see below). The trust trade-off is explicit and documented in CROPS terms: the
+owner is trusted for marks; every mark is emitted in an event so anyone can
+compare it against public charts, and dishonest marks are publicly provable.
+The checkpoint-oracle design below is the **Phase 1+ upgrade path**, kept for
+when selection/settlement decentralizes.
+
+### Price source (Phase 1+): TWAP, denominated right
 
 - **The wrinkle (see §0):** the deep pool is Uniswap **V4**, which has no native
   TWAP — and the V3 pool that *does* have one is too thin ($25k) to trust.
@@ -205,37 +217,41 @@ identical to things that are done legally all the time:
    the realistic tail is enforcement/fines aimed at the *program*, and a consult
    shrinks it a lot).
 
-## 4. Contracts (Phase 0)
+## 4. Contract (Phase 0) — ONE contract, admin-marked
 
-Foundry project, Base (+ Base Sepolia first). ~3 small contracts:
+Per the ethskills ship guidance (0–2 contracts for an MVP) and Austin's
+admin-marks decision, Phase 0 collapses to a single contract on Base:
 
 ```
-InternRegistry.sol
-  appoint(address intern, uint64 termLength)   onlyOwner (multisig)
-  currentIntern() → (address, termId, endsAt)  ← the utility layer reads only this
-  cooldown enforcement, one active term at a time
+ClawdIntern.sol  (Ownable; owner = Austin, later a Safe)
 
-RewardVault.sol
-  fund(termId, budget)            locks CLAWD at appointment
-  settle(termId)                  anyone can call after term end; reads oracle,
-                                  computes payout, opens the stream, returns
-                                  surplus to treasury
-  claim(termId)                   intern pulls vested amount (linear over 30d)
-  slash(termId)                   governance-only, unvested portion only
+  openTerm(intern, markIn, budget, termLength)   onlyOwner
+    · one active term at a time; pulls `budget` CLAWD in (SafeERC20)
+    · markIn = USD price ×1e18, read by the admin off public charts
+  closeTerm(markOut)                             onlyOwner, at/after term end
+    · gainBps  = markOut > markIn ? (markOut−markIn)·10000/markIn : 0
+    · payout   = budget × min(gainBps, gainCapBps) / gainCapBps
+    · surplus returns to owner; 30-day linear stream opens for the intern
+  cancelTerm()                                   onlyOwner, mid-term kill switch
+    · rogue-intern escape hatch: budget returns, no payout (trust trade-off
+      documented — the admin can rug a term; Phase 0 accepts this)
+  claim(termId)                                  intern pulls vested CLAWD
+  slash(termId)                                  onlyOwner, unvested only
+  currentIntern() → (intern, termId, endsAt)     ← the only thing the utility
+                                                    layer ever reads
 
-TwapOracle.sol
-  markIn(pool)   3d TWAP  (Uniswap observe() + Chainlink ETH/USD → USD price)
-  markOut(pool)  7d TWAP
-  liquidity floor check
+  Every mark, payout, slash emits an event — the transparency that makes
+  admin marks auditable-by-anyone is load-bearing (legally too, §3).
 ```
 
-Streaming: a hand-rolled linear vest is ~20 lines and keeps the system
-self-contained; Sablier V2 on Base is the alternative if we'd rather have their
-UI for free. Lean hand-rolled — the slash hook composes better.
+Streaming is hand-rolled linear vesting (~15 lines) — self-contained and the
+slash hook composes cleanly. No oracle contract in Phase 0; the §2 checkpoint
+oracle slots in later by replacing the two mark parameters with oracle reads.
 
-Tests that matter most: fork-test the TWAP math against the real pool;
-simulate attack #2 (end-of-term pump) and #3 (pre-term dump) and assert the
-payout delta is small; fuzz `settle` around term boundaries.
+Tests that matter most: fuzz the gain/payout math (zero, negative, > cap,
+extreme marks), fuzz vesting across time (claim monotonic, never exceeds
+payout), slash mid-stream, cancel mid-term, access control on every mutating
+function, surplus accounting exact to the wei.
 
 ## 5. Utility layer (off-chain, keyed to `currentIntern()`)
 
