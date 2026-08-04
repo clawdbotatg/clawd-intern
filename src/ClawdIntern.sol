@@ -90,6 +90,7 @@ contract ClawdIntern is Ownable2Step, ReentrancyGuard {
     error InternOnCooldown();
     error CannotRescueClawd();
     error TransferAmountMismatch();
+    error RenounceDisabled();
 
     constructor(IERC20 _clawd, address _owner, uint256 _gainCapBps, uint64 _streamLength, uint64 _cooldown)
         Ownable(_owner)
@@ -149,6 +150,10 @@ contract ClawdIntern is Ownable2Step, ReentrancyGuard {
     /// @notice Close the active term at/after its scheduled end with the
     /// owner-observed USD price `markOut` (1e18). Computes the payout, opens
     /// the stream, and returns any surplus budget to the owner.
+    /// @dev Trust note: there is no close deadline — the owner controls close
+    /// timing (the stream starts at close, not at t.end). Part of the Phase 0
+    /// owner-trust surface alongside marks and cancel; self-limiting, since no
+    /// new term can open until this one closes.
     function closeTerm(uint256 markOut) external onlyOwner nonReentrant {
         uint256 termId = activeTermId;
         if (termId == NONE) revert NoActiveTerm();
@@ -220,6 +225,14 @@ contract ClawdIntern is Ownable2Step, ReentrancyGuard {
         if (address(token) == address(clawd)) revert CannotRescueClawd();
         if (to == address(0)) revert ZeroAddress();
         token.safeTransfer(to, amount);
+    }
+
+    /// @notice Disabled: an ownerless ClawdIntern is a wedged one. Renouncing
+    /// with an active term would strand its budget forever (close/cancel are
+    /// onlyOwner), and would permanently disable slash on live streams.
+    /// Decentralize by transferring to a Safe / governance instead.
+    function renounceOwnership() public view override onlyOwner {
+        revert RenounceDisabled();
     }
 
     // ---------------------------------------------------------------- claims

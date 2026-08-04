@@ -378,6 +378,83 @@ contract ClawdInternTest is Test {
         assertEq(clawd.balanceOf(address(app)), 0);
     }
 
+    function test_RenounceOwnershipDisabled() public {
+        _open(); // even (especially) with an active term
+        vm.prank(owner);
+        vm.expectRevert(ClawdIntern.RenounceDisabled.selector);
+        app.renounceOwnership();
+        assertEq(app.owner(), owner);
+    }
+
+    function test_SlashAfterPartialClaimPaysRemainderExactly() public {
+        // claim at T/4, slash at T/2 → intern must net exactly payout/2
+        uint256 id = _openAndClose(MARK_IN * 10); // full budget payout
+        uint256 closedAt = block.timestamp;
+
+        vm.warp(closedAt + STREAM / 4);
+        app.claim(id); // intern has BUDGET/4
+
+        vm.warp(closedAt + STREAM / 2);
+        vm.prank(owner);
+        app.slash(id); // vested = BUDGET/2, claimed = BUDGET/4
+
+        assertEq(app.claimable(id), BUDGET / 4, "remainder after slash");
+        app.claim(id);
+        assertEq(clawd.balanceOf(intern), BUDGET / 2, "intern nets exactly vested-at-slash");
+        assertEq(clawd.balanceOf(address(app)), 0);
+    }
+
+    function test_RevertWhen_SlashFlatCloseTerm() public {
+        uint256 id = _openAndClose(MARK_IN); // flat → payout 0
+        vm.prank(owner);
+        vm.expectRevert(ClawdIntern.NothingToSlash.selector);
+        app.slash(id);
+    }
+
+    function test_CancelInterleavedBetweenStreamsConservesBalances() public {
+        // term 0 closes with a live stream, term 1 is cancelled mid-term,
+        // term 2 closes — cancel must never dip into term 0's payout.
+        uint256 id0 = _openAndClose(MARK_IN * 10); // full BUDGET streaming
+
+        vm.warp(block.timestamp + 1 days);
+        vm.prank(owner);
+        app.openTerm(rando, MARK_IN, BUDGET, TERM);
+        uint256 ownerBefore = clawd.balanceOf(owner);
+        vm.prank(owner);
+        app.cancelTerm();
+        assertEq(clawd.balanceOf(owner), ownerBefore + BUDGET, "cancel returns exactly its own budget");
+        assertEq(clawd.balanceOf(address(app)), BUDGET, "term 0 stream untouched");
+
+        address third = makeAddr("third");
+        vm.prank(owner);
+        uint256 id2 = app.openTerm(third, MARK_IN, BUDGET, TERM);
+        vm.warp(block.timestamp + TERM);
+        vm.prank(owner);
+        app.closeTerm(MARK_IN + MARK_IN / 4); // +25% → half budget
+
+        vm.warp(block.timestamp + STREAM);
+        app.claim(id0);
+        app.claim(id2);
+        assertEq(clawd.balanceOf(intern), BUDGET);
+        assertEq(clawd.balanceOf(third), BUDGET / 2);
+        assertEq(clawd.balanceOf(address(app)), 0, "exact conservation across all three terms");
+    }
+
+    function test_CancelPutsInternOnCooldown() public {
+        _open();
+        vm.prank(owner);
+        app.cancelTerm();
+        vm.prank(owner);
+        vm.expectRevert(ClawdIntern.InternOnCooldown.selector);
+        app.openTerm(intern, MARK_IN, BUDGET, TERM);
+
+        // documented escape hatch for a typo'd open: zero the cooldown
+        vm.prank(owner);
+        app.setParams(GAIN_CAP_BPS, STREAM, 0);
+        vm.prank(owner);
+        app.openTerm(intern, MARK_IN, BUDGET, TERM);
+    }
+
     // --------------------------------------------------------------- rescue
 
     function test_RescueRefusesClawdButSavesOthers() public {

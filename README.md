@@ -35,7 +35,7 @@ dishonest mark is publicly provable against any chart. Oracle upgrade path in
 
 ```bash
 forge build
-forge test          # 24 tests incl. fuzzed payout math + vesting
+forge test          # 29 tests incl. fuzzed payout math + vesting
 forge script script/DeployClawdIntern.s.sol --rpc-url base --broadcast --verify
 ```
 
