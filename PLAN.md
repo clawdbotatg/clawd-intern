@@ -15,6 +15,36 @@ properties.
 
 ---
 
+## 0. Research findings (2026-08-03)
+
+- **CLAWD token:** `0x9f86dB9fc6f7c9408e8Fda3Ff8ce4e78ac7a6b07` on **Base**.
+  Price ≈ $0.0000069, FDV ≈ $675k.
+- **Canonical pool:** **Uniswap V4** CLAWD/WETH, poolId
+  `0x9fd58e73d8047cb14ac540acd141d3fc1a41fb6252d674b730faf62fe24aa8ce` —
+  ~$707k liquidity, ~$10k/day volume. Everything else is dust by comparison:
+  the V3 CLAWD/WETH pool (`0xCD55…FAc3`) holds only ~$25k, Aerodrome USDC ~$5k.
+- **⚠️ Oracle consequence:** Uniswap **V4 removed TWAP oracles from core** —
+  observations only exist if the pool was created with an oracle hook, and hooks
+  can't be retrofitted. The V3 pool's built-in TWAP exists but $25k of depth is
+  too thin to trust. See §2 "Price source" for the revised design.
+- **CV = Clawdviction** (larv.ai): governance weight earned by staking CLAWD,
+  conviction = stake × time (1 CLAWD × 20 days = 1 CV). Larva agents debate and
+  vote on proposals for their owners. **Phase 2 selection can plug straight into
+  this** — "lock CV to pick/veto the intern" is an existing system, not new infra.
+  CV is also spendable (Conclave chat/engagements), so *spending* CV to
+  nominate is another option.
+- **Existing vesting primitive:** `clawd-vesting`
+  (`0x8d094DA613827Ec6B6C667D10b0719b494D76049`, Base) — linear drip,
+  no-admin-keys, but hardcoded 10-minute duration and single beneficiary; the
+  pattern forks cleanly into the 30-day intern stream.
+- **Treasury:** `safe.clawd.atg.eth`, with a loud "not a single token has been
+  sold" ethos. Narrative note: the intern *will* sell streamed tokens — that's
+  the point of comp — so the messaging should pre-frame intern emissions as
+  "earned comp, publicly metered on-chain," distinct from team sales.
+- **Budget sizing:** at ~$707k pool depth, the ≤ low-single-digit-% rule puts a
+  sensible per-term budget around **$5–15k worth of CLAWD** (≈ 0.7–2B CLAWD at
+  today's price).
+
 ## 1. Decoupled modules (one address, three systems)
 
 The intern is just an address. Three independent systems key off it, and each can
@@ -58,10 +88,25 @@ term ends
 
 ### Price source: TWAP, denominated right
 
-- **Oracle:** Uniswap V3/V4 pool observation (CLAWD/WETH on Base, whichever pool
-  is canonical + deepest). Multi-block TWAPs are the standard flash-loan defense —
-  a flash loan lives and dies in one block and moves a long TWAP by ~nothing.
-- **Denomination:** compose CLAWD/WETH TWAP with Chainlink ETH/USD on Base so the
+- **The wrinkle (see §0):** the deep pool is Uniswap **V4**, which has no native
+  TWAP — and the V3 pool that *does* have one is too thin ($25k) to trust.
+  Options, in order of preference:
+  1. **Checkpoint oracle (recommended):** a small permissionless contract with
+     `poke()` — anyone (a keeper cron, the settle tx itself, random users) calls
+     it to record the V4 pool's current sqrtPrice into a cumulative accumulator;
+     TWAP = time-weighted mean of checkpoints over the window. Guards: minimum
+     spacing between counted checkpoints, per-checkpoint price-move clamp (e.g.
+     ±10% vs previous, so a single manipulated block can't spike the mean), and
+     a minimum-observation count for a mark to be valid. To rig a 7-day window an
+     attacker must hold a moved price across *many spaced checkpoints* against
+     arbitrage — economically the same defense as a native TWAP.
+  2. **Migrate/see liquidity into a V4 pool created with a truncated-oracle hook**
+     — cleanest long-term, but means moving the canonical pool; heavier lift.
+  3. **Deepen the V3 pool** and use its native TWAP — only if there's an
+     independent reason to hold V3 liquidity.
+  Cross-check either way: settle can sanity-band the primary mark against the
+  V3 TWAP and revert to governance settlement if they diverge wildly.
+- **Denomination:** compose the CLAWD/WETH mark with Chainlink ETH/USD on Base so the
   intern is measured in **USD terms**, not ETH terms. Otherwise an ETH rally pays
   the intern for doing nothing (and an ETH crash punishes a great intern). Ship
   v1 with the composition; make the denominator swappable.
@@ -232,12 +277,17 @@ payout delta is small; fuzz `settle` around term boundaries.
 
 ## Open questions for Austin
 
-- Which chain/pool is canonical for CLAWD, and how deep is it? (Drives budget
-  sizing and whether the TWAP is trustworthy at all — if liquidity is very thin,
-  we should fix that before this launches.)
+- ~~Which chain/pool is canonical for CLAWD?~~ **Answered (§0):** Uniswap V4
+  CLAWD/WETH on Base, ~$707k deep — plenty for a $5–15k/term budget, but V4's
+  missing native TWAP forces the checkpoint-oracle design in §2.
+- ~~What is CV?~~ **Answered (§0):** Clawdviction on larv.ai — stake-×-time
+  governance weight with larva agents; Phase 2 selection reuses it directly.
 - Price-only v1, or blend in a non-price metric from day one (§3.3)? My
   recommendation: blend, even 75/25, for both legal posture and mechanism
   quality.
-- What is CV vs CLAWD exactly (selection-stake vs reward token), and does CV
-  already have locking infrastructure to reuse for Phase 2?
+- Checkpoint oracle (§2 option 1) vs. migrating liquidity to an oracle-hooked V4
+  pool (option 2)? Checkpoint is far less disruptive; hook pool is cleaner
+  forever-infra.
 - Budget per term: fixed CLAWD amount, or fixed % of a treasury pot?
+- Who runs the `poke()` keeper (harness cron is the obvious answer), and do we
+  pay a tiny CLAWD bounty per poke to make it permissionlessly self-sustaining?
