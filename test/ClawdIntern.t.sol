@@ -111,7 +111,7 @@ contract ClawdInternTest is Test {
         vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, rando));
         app.cancelTerm();
         vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, rando));
-        app.slash(0);
+        app.slash(0, "");
         vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, rando));
         app.setParams(1, 1, 1);
         vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, rando));
@@ -292,7 +292,7 @@ contract ClawdInternTest is Test {
 
         vm.warp(block.timestamp + STREAM / 4);
         vm.prank(owner);
-        app.slash(id);
+        app.slash(id, "breach");
 
         assertEq(clawd.balanceOf(owner), ownerBefore + (BUDGET * 3) / 4);
         assertEq(app.claimable(id), BUDGET / 4);
@@ -310,7 +310,7 @@ contract ClawdInternTest is Test {
         app.claim(id); // intern claims half
 
         vm.prank(owner);
-        app.slash(id); // vested == claimed == half; other half returns
+        app.slash(id, "breach"); // vested == claimed == half; other half returns
         assertEq(app.claimable(id), 0);
         vm.expectRevert(ClawdIntern.NothingToClaim.selector);
         app.claim(id);
@@ -321,7 +321,7 @@ contract ClawdInternTest is Test {
         vm.warp(block.timestamp + STREAM);
         vm.prank(owner);
         vm.expectRevert(ClawdIntern.NothingToSlash.selector);
-        app.slash(id);
+        app.slash(id, "breach");
 
         uint256 id2;
         vm.warp(block.timestamp + COOLDOWN + 1);
@@ -330,11 +330,11 @@ contract ClawdInternTest is Test {
         vm.warp(block.timestamp + TERM);
         vm.prank(owner);
         app.closeTerm(MARK_IN * 10);
-        vm.warp(block.timestamp + 1 days);
+        vm.warp(block.timestamp + 3 days);
         vm.startPrank(owner);
-        app.slash(id2);
+        app.slash(id2, "breach");
         vm.expectRevert(ClawdIntern.TermAlreadySettled.selector);
-        app.slash(id2);
+        app.slash(id2, "breach");
         vm.stopPrank();
     }
 
@@ -342,7 +342,54 @@ contract ClawdInternTest is Test {
         uint256 id = _open();
         vm.prank(owner);
         vm.expectRevert(ClawdIntern.TermNotClosed.selector);
-        app.slash(id);
+        app.slash(id, "breach");
+    }
+
+    function test_RevertWhen_SlashBeforeDelay() public {
+        // audit F1: a just-closed, fully-earned payout can't be zeroed instantly
+        uint256 id = _openAndClose(MARK_IN * 10); // full budget payout
+        vm.prank(owner);
+        vm.expectRevert(ClawdIntern.SlashTooEarly.selector);
+        app.slash(id, "too fast");
+
+        vm.warp(block.timestamp + app.SLASH_DELAY());
+        vm.prank(owner);
+        app.slash(id, "ok now"); // intern keeps SLASH_DELAY/STREAM worth
+        assertEq(app.claimable(id), (BUDGET * uint256(app.SLASH_DELAY())) / STREAM);
+    }
+
+    // ------------------------------------------------------------- reassign
+
+    function test_ReassignInternRedirectsStream() public {
+        // audit F2: recovery path when the recorded intern can't receive tokens
+        uint256 id = _openAndClose(MARK_IN * 10);
+        address heir = makeAddr("heir");
+
+        vm.warp(block.timestamp + STREAM / 2);
+        vm.prank(owner);
+        app.reassignIntern(id, heir);
+
+        app.claim(id);
+        assertEq(clawd.balanceOf(heir), BUDGET / 2, "claim pays the new intern");
+        assertEq(clawd.balanceOf(intern), 0);
+    }
+
+    function test_RevertWhen_ReassignInvalid() public {
+        uint256 id = _open();
+        vm.prank(owner);
+        vm.expectRevert(ClawdIntern.TermNotClosed.selector);
+        app.reassignIntern(id, rando); // not closed yet
+
+        vm.warp(block.timestamp + TERM);
+        vm.prank(owner);
+        app.closeTerm(MARK_IN * 10);
+        vm.prank(owner);
+        vm.expectRevert(ClawdIntern.ZeroAddress.selector);
+        app.reassignIntern(id, address(0));
+
+        vm.prank(rando);
+        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, rando));
+        app.reassignIntern(id, rando);
     }
 
     // ------------------------------------------------- params + multi-term
@@ -396,7 +443,7 @@ contract ClawdInternTest is Test {
 
         vm.warp(closedAt + STREAM / 2);
         vm.prank(owner);
-        app.slash(id); // vested = BUDGET/2, claimed = BUDGET/4
+        app.slash(id, "breach"); // vested = BUDGET/2, claimed = BUDGET/4
 
         assertEq(app.claimable(id), BUDGET / 4, "remainder after slash");
         app.claim(id);
@@ -408,7 +455,7 @@ contract ClawdInternTest is Test {
         uint256 id = _openAndClose(MARK_IN); // flat → payout 0
         vm.prank(owner);
         vm.expectRevert(ClawdIntern.NothingToSlash.selector);
-        app.slash(id);
+        app.slash(id, "breach");
     }
 
     function test_CancelInterleavedBetweenStreamsConservesBalances() public {
@@ -464,6 +511,9 @@ contract ClawdInternTest is Test {
 
         MockClawd other = new MockClawd();
         other.transfer(address(app), 100e18);
+        vm.prank(owner);
+        vm.expectRevert(ClawdIntern.ZeroAmount.selector);
+        app.rescue(IERC20(address(other)), owner, 0);
         vm.prank(owner);
         app.rescue(IERC20(address(other)), owner, 100e18);
         assertEq(other.balanceOf(owner), 100e18);
