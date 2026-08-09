@@ -46,6 +46,15 @@ export const Footer = () => {
             >
               Contract on Basescan
             </a>
+            <span>·</span>
+            <a
+              href="https://base.blockscout.com/address/0xc447bC73F4101726Ae4496C3586047b5F920dcCD?tab=contract"
+              target="_blank"
+              rel="noreferrer"
+              className="link"
+            >
+              Verified source (Blockscout)
+            </a>
           </div>
         </ul>
       </div>

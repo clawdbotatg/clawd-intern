@@ -6,6 +6,7 @@ import { AddressInput } from "@scaffold-ui/components";
 import { parseEther, parseUnits } from "viem";
 import { useAccount } from "wagmi";
 import { useScaffoldReadContract, useScaffoldWriteContract } from "~~/hooks/scaffold-eth";
+import { useWalletDeepLink } from "~~/hooks/useWalletDeepLink";
 import { formatClawd } from "~~/utils/clawd";
 import { notification } from "~~/utils/scaffold-eth";
 
@@ -63,6 +64,7 @@ export const OwnerPanel = ({
   const { writeContractAsync: writeClawdIntern, isMining: isInternMining } = useScaffoldWriteContract({
     contractName: "ClawdIntern",
   });
+  const { writeAndOpen } = useWalletDeepLink();
 
   const parsedBudget = (() => {
     try {
@@ -85,7 +87,7 @@ export const OwnerPanel = ({
     if (approvalSubmitting || approveCooldown) return;
     setApprovalSubmitting(true);
     try {
-      await writeClawd({ functionName: "approve", args: [clawdInternAddress, parsedBudget] });
+      await writeAndOpen(() => writeClawd({ functionName: "approve", args: [clawdInternAddress, parsedBudget] }));
       setApproveCooldown(true);
       setTimeout(() => {
         setApproveCooldown(false);
@@ -106,10 +108,12 @@ export const OwnerPanel = ({
     }
     setOpenSubmitting(true);
     try {
-      await writeClawdIntern({
-        functionName: "openTerm",
-        args: [intern, parsedMarkIn, parsedBudget, BigInt(Math.round(Number(termDays) * DAY))],
-      });
+      await writeAndOpen(() =>
+        writeClawdIntern({
+          functionName: "openTerm",
+          args: [intern, parsedMarkIn, parsedBudget, BigInt(Math.round(Number(termDays) * DAY))],
+        }),
+      );
       setIntern("");
       setBudget("");
       setMarkIn("");
@@ -135,7 +139,7 @@ export const OwnerPanel = ({
     }
     setCloseSubmitting(true);
     try {
-      await writeClawdIntern({ functionName: "closeTerm", args: [parsed] });
+      await writeAndOpen(() => writeClawdIntern({ functionName: "closeTerm", args: [parsed] }));
       setMarkOut("");
     } catch {
       notification.error("closeTerm failed — term may still be running");
@@ -151,7 +155,7 @@ export const OwnerPanel = ({
     }
     setCancelSubmitting(true);
     try {
-      await writeClawdIntern({ functionName: "cancelTerm" });
+      await writeAndOpen(() => writeClawdIntern({ functionName: "cancelTerm" }));
     } catch {
       notification.error("cancelTerm failed");
     } finally {
@@ -167,7 +171,9 @@ export const OwnerPanel = ({
     }
     setSlashSubmitting(true);
     try {
-      await writeClawdIntern({ functionName: "slash", args: [BigInt(slashTermId), slashReason.trim()] });
+      await writeAndOpen(() =>
+        writeClawdIntern({ functionName: "slash", args: [BigInt(slashTermId), slashReason.trim()] }),
+      );
       setSlashTermId("");
       setSlashReason("");
     } catch {
@@ -185,7 +191,9 @@ export const OwnerPanel = ({
     }
     setReassignSubmitting(true);
     try {
-      await writeClawdIntern({ functionName: "reassignIntern", args: [BigInt(reassignTermId), newIntern] });
+      await writeAndOpen(() =>
+        writeClawdIntern({ functionName: "reassignIntern", args: [BigInt(reassignTermId), newIntern] }),
+      );
       setReassignTermId("");
       setNewIntern("");
     } catch {

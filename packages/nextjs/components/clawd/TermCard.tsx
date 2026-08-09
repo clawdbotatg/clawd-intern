@@ -4,6 +4,7 @@ import { useState } from "react";
 import { ActionGuard } from "./ActionGuard";
 import { Address } from "@scaffold-ui/components";
 import { useScaffoldReadContract, useScaffoldWriteContract, useTargetNetwork } from "~~/hooks/scaffold-eth";
+import { useWalletDeepLink } from "~~/hooks/useWalletDeepLink";
 import { formatClawd, formatDuration, formatMark } from "~~/utils/clawd";
 import { notification } from "~~/utils/scaffold-eth";
 
@@ -37,6 +38,7 @@ export const TermCard = ({
   const { writeContractAsync: writeClawdIntern, isMining } = useScaffoldWriteContract({
     contractName: "ClawdIntern",
   });
+  const { writeAndOpen } = useWalletDeepLink();
 
   if (!term) {
     return (
@@ -77,7 +79,7 @@ export const TermCard = ({
     if (claimSubmitting) return;
     setClaimSubmitting(true);
     try {
-      await writeClawdIntern({ functionName: "claim", args: [termId] });
+      await writeAndOpen(() => writeClawdIntern({ functionName: "claim", args: [termId] }));
       refetchTerm();
       refetchClaimable();
     } catch {
