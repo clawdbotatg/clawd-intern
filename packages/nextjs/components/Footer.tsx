@@ -39,7 +39,7 @@ export const Footer = () => {
             </a>
             <span>·</span>
             <a
-              href="https://basescan.org/address/0xc447bC73F4101726Ae4496C3586047b5F920dcCD"
+              href="https://basescan.org/address/0xD390486ab72ED8af1EE06F1060E9663aAbfe2A55"
               target="_blank"
               rel="noreferrer"
               className="link"
@@ -48,7 +48,7 @@ export const Footer = () => {
             </a>
             <span>·</span>
             <a
-              href="https://base.blockscout.com/address/0xc447bC73F4101726Ae4496C3586047b5F920dcCD?tab=contract"
+              href="https://base.blockscout.com/address/0xD390486ab72ED8af1EE06F1060E9663aAbfe2A55?tab=contract"
               target="_blank"
               rel="noreferrer"
               className="link"

@@ -4,6 +4,955 @@
  */
 import { GenericContractsDeclaration } from "~~/utils/scaffold-eth/contract";
 
-const deployedContracts = {} as const;
+const deployedContracts = {
+  8453: {
+    ClawdIntern: {
+      address: "0xd390486ab72ed8af1ee06f1060e9663aabfe2a55",
+      abi: [
+        {
+          type: "constructor",
+          inputs: [
+            {
+              name: "_clawd",
+              type: "address",
+              internalType: "contract IERC20",
+            },
+            {
+              name: "_owner",
+              type: "address",
+              internalType: "address",
+            },
+            {
+              name: "_gainCapBps",
+              type: "uint256",
+              internalType: "uint256",
+            },
+            {
+              name: "_streamLength",
+              type: "uint64",
+              internalType: "uint64",
+            },
+            {
+              name: "_cooldown",
+              type: "uint64",
+              internalType: "uint64",
+            },
+          ],
+          stateMutability: "nonpayable",
+        },
+        {
+          type: "function",
+          name: "BPS",
+          inputs: [],
+          outputs: [
+            {
+              name: "",
+              type: "uint256",
+              internalType: "uint256",
+            },
+          ],
+          stateMutability: "view",
+        },
+        {
+          type: "function",
+          name: "NONE",
+          inputs: [],
+          outputs: [
+            {
+              name: "",
+              type: "uint256",
+              internalType: "uint256",
+            },
+          ],
+          stateMutability: "view",
+        },
+        {
+          type: "function",
+          name: "SLASH_DELAY",
+          inputs: [],
+          outputs: [
+            {
+              name: "",
+              type: "uint64",
+              internalType: "uint64",
+            },
+          ],
+          stateMutability: "view",
+        },
+        {
+          type: "function",
+          name: "acceptOwnership",
+          inputs: [],
+          outputs: [],
+          stateMutability: "nonpayable",
+        },
+        {
+          type: "function",
+          name: "activeTermId",
+          inputs: [],
+          outputs: [
+            {
+              name: "",
+              type: "uint256",
+              internalType: "uint256",
+            },
+          ],
+          stateMutability: "view",
+        },
+        {
+          type: "function",
+          name: "cancelTerm",
+          inputs: [],
+          outputs: [],
+          stateMutability: "nonpayable",
+        },
+        {
+          type: "function",
+          name: "claim",
+          inputs: [
+            {
+              name: "termId",
+              type: "uint256",
+              internalType: "uint256",
+            },
+          ],
+          outputs: [],
+          stateMutability: "nonpayable",
+        },
+        {
+          type: "function",
+          name: "claimable",
+          inputs: [
+            {
+              name: "termId",
+              type: "uint256",
+              internalType: "uint256",
+            },
+          ],
+          outputs: [
+            {
+              name: "",
+              type: "uint256",
+              internalType: "uint256",
+            },
+          ],
+          stateMutability: "view",
+        },
+        {
+          type: "function",
+          name: "clawd",
+          inputs: [],
+          outputs: [
+            {
+              name: "",
+              type: "address",
+              internalType: "contract IERC20",
+            },
+          ],
+          stateMutability: "view",
+        },
+        {
+          type: "function",
+          name: "closeTerm",
+          inputs: [
+            {
+              name: "markOut",
+              type: "uint256",
+              internalType: "uint256",
+            },
+          ],
+          outputs: [],
+          stateMutability: "nonpayable",
+        },
+        {
+          type: "function",
+          name: "cooldown",
+          inputs: [],
+          outputs: [
+            {
+              name: "",
+              type: "uint64",
+              internalType: "uint64",
+            },
+          ],
+          stateMutability: "view",
+        },
+        {
+          type: "function",
+          name: "currentIntern",
+          inputs: [],
+          outputs: [
+            {
+              name: "intern",
+              type: "address",
+              internalType: "address",
+            },
+            {
+              name: "termId",
+              type: "uint256",
+              internalType: "uint256",
+            },
+            {
+              name: "endsAt",
+              type: "uint64",
+              internalType: "uint64",
+            },
+          ],
+          stateMutability: "view",
+        },
+        {
+          type: "function",
+          name: "gainCapBps",
+          inputs: [],
+          outputs: [
+            {
+              name: "",
+              type: "uint256",
+              internalType: "uint256",
+            },
+          ],
+          stateMutability: "view",
+        },
+        {
+          type: "function",
+          name: "getTerm",
+          inputs: [
+            {
+              name: "termId",
+              type: "uint256",
+              internalType: "uint256",
+            },
+          ],
+          outputs: [
+            {
+              name: "",
+              type: "tuple",
+              internalType: "struct ClawdIntern.Term",
+              components: [
+                {
+                  name: "intern",
+                  type: "address",
+                  internalType: "address",
+                },
+                {
+                  name: "start",
+                  type: "uint64",
+                  internalType: "uint64",
+                },
+                {
+                  name: "end",
+                  type: "uint64",
+                  internalType: "uint64",
+                },
+                {
+                  name: "closedAt",
+                  type: "uint64",
+                  internalType: "uint64",
+                },
+                {
+                  name: "streamLen",
+                  type: "uint64",
+                  internalType: "uint64",
+                },
+                {
+                  name: "capBps",
+                  type: "uint256",
+                  internalType: "uint256",
+                },
+                {
+                  name: "markIn",
+                  type: "uint256",
+                  internalType: "uint256",
+                },
+                {
+                  name: "markOut",
+                  type: "uint256",
+                  internalType: "uint256",
+                },
+                {
+                  name: "budget",
+                  type: "uint256",
+                  internalType: "uint256",
+                },
+                {
+                  name: "payout",
+                  type: "uint256",
+                  internalType: "uint256",
+                },
+                {
+                  name: "claimed",
+                  type: "uint256",
+                  internalType: "uint256",
+                },
+                {
+                  name: "cancelled",
+                  type: "bool",
+                  internalType: "bool",
+                },
+                {
+                  name: "slashed",
+                  type: "bool",
+                  internalType: "bool",
+                },
+              ],
+            },
+          ],
+          stateMutability: "view",
+        },
+        {
+          type: "function",
+          name: "lastTermEnd",
+          inputs: [
+            {
+              name: "",
+              type: "address",
+              internalType: "address",
+            },
+          ],
+          outputs: [
+            {
+              name: "",
+              type: "uint64",
+              internalType: "uint64",
+            },
+          ],
+          stateMutability: "view",
+        },
+        {
+          type: "function",
+          name: "openTerm",
+          inputs: [
+            {
+              name: "intern",
+              type: "address",
+              internalType: "address",
+            },
+            {
+              name: "markIn",
+              type: "uint256",
+              internalType: "uint256",
+            },
+            {
+              name: "budget",
+              type: "uint256",
+              internalType: "uint256",
+            },
+            {
+              name: "termLength",
+              type: "uint64",
+              internalType: "uint64",
+            },
+          ],
+          outputs: [
+            {
+              name: "termId",
+              type: "uint256",
+              internalType: "uint256",
+            },
+          ],
+          stateMutability: "nonpayable",
+        },
+        {
+          type: "function",
+          name: "owner",
+          inputs: [],
+          outputs: [
+            {
+              name: "",
+              type: "address",
+              internalType: "address",
+            },
+          ],
+          stateMutability: "view",
+        },
+        {
+          type: "function",
+          name: "pendingOwner",
+          inputs: [],
+          outputs: [
+            {
+              name: "",
+              type: "address",
+              internalType: "address",
+            },
+          ],
+          stateMutability: "view",
+        },
+        {
+          type: "function",
+          name: "reassignIntern",
+          inputs: [
+            {
+              name: "termId",
+              type: "uint256",
+              internalType: "uint256",
+            },
+            {
+              name: "newIntern",
+              type: "address",
+              internalType: "address",
+            },
+          ],
+          outputs: [],
+          stateMutability: "nonpayable",
+        },
+        {
+          type: "function",
+          name: "renounceOwnership",
+          inputs: [],
+          outputs: [],
+          stateMutability: "view",
+        },
+        {
+          type: "function",
+          name: "rescue",
+          inputs: [
+            {
+              name: "token",
+              type: "address",
+              internalType: "contract IERC20",
+            },
+            {
+              name: "to",
+              type: "address",
+              internalType: "address",
+            },
+            {
+              name: "amount",
+              type: "uint256",
+              internalType: "uint256",
+            },
+          ],
+          outputs: [],
+          stateMutability: "nonpayable",
+        },
+        {
+          type: "function",
+          name: "setParams",
+          inputs: [
+            {
+              name: "_gainCapBps",
+              type: "uint256",
+              internalType: "uint256",
+            },
+            {
+              name: "_streamLength",
+              type: "uint64",
+              internalType: "uint64",
+            },
+            {
+              name: "_cooldown",
+              type: "uint64",
+              internalType: "uint64",
+            },
+          ],
+          outputs: [],
+          stateMutability: "nonpayable",
+        },
+        {
+          type: "function",
+          name: "slash",
+          inputs: [
+            {
+              name: "termId",
+              type: "uint256",
+              internalType: "uint256",
+            },
+            {
+              name: "reason",
+              type: "string",
+              internalType: "string",
+            },
+          ],
+          outputs: [],
+          stateMutability: "nonpayable",
+        },
+        {
+          type: "function",
+          name: "streamLength",
+          inputs: [],
+          outputs: [
+            {
+              name: "",
+              type: "uint64",
+              internalType: "uint64",
+            },
+          ],
+          stateMutability: "view",
+        },
+        {
+          type: "function",
+          name: "termCount",
+          inputs: [],
+          outputs: [
+            {
+              name: "",
+              type: "uint256",
+              internalType: "uint256",
+            },
+          ],
+          stateMutability: "view",
+        },
+        {
+          type: "function",
+          name: "terms",
+          inputs: [
+            {
+              name: "",
+              type: "uint256",
+              internalType: "uint256",
+            },
+          ],
+          outputs: [
+            {
+              name: "intern",
+              type: "address",
+              internalType: "address",
+            },
+            {
+              name: "start",
+              type: "uint64",
+              internalType: "uint64",
+            },
+            {
+              name: "end",
+              type: "uint64",
+              internalType: "uint64",
+            },
+            {
+              name: "closedAt",
+              type: "uint64",
+              internalType: "uint64",
+            },
+            {
+              name: "streamLen",
+              type: "uint64",
+              internalType: "uint64",
+            },
+            {
+              name: "capBps",
+              type: "uint256",
+              internalType: "uint256",
+            },
+            {
+              name: "markIn",
+              type: "uint256",
+              internalType: "uint256",
+            },
+            {
+              name: "markOut",
+              type: "uint256",
+              internalType: "uint256",
+            },
+            {
+              name: "budget",
+              type: "uint256",
+              internalType: "uint256",
+            },
+            {
+              name: "payout",
+              type: "uint256",
+              internalType: "uint256",
+            },
+            {
+              name: "claimed",
+              type: "uint256",
+              internalType: "uint256",
+            },
+            {
+              name: "cancelled",
+              type: "bool",
+              internalType: "bool",
+            },
+            {
+              name: "slashed",
+              type: "bool",
+              internalType: "bool",
+            },
+          ],
+          stateMutability: "view",
+        },
+        {
+          type: "function",
+          name: "transferOwnership",
+          inputs: [
+            {
+              name: "newOwner",
+              type: "address",
+              internalType: "address",
+            },
+          ],
+          outputs: [],
+          stateMutability: "nonpayable",
+        },
+        {
+          type: "event",
+          name: "Claimed",
+          inputs: [
+            {
+              name: "termId",
+              type: "uint256",
+              indexed: true,
+              internalType: "uint256",
+            },
+            {
+              name: "intern",
+              type: "address",
+              indexed: true,
+              internalType: "address",
+            },
+            {
+              name: "amount",
+              type: "uint256",
+              indexed: false,
+              internalType: "uint256",
+            },
+          ],
+          anonymous: false,
+        },
+        {
+          type: "event",
+          name: "InternReassigned",
+          inputs: [
+            {
+              name: "termId",
+              type: "uint256",
+              indexed: true,
+              internalType: "uint256",
+            },
+            {
+              name: "oldIntern",
+              type: "address",
+              indexed: true,
+              internalType: "address",
+            },
+            {
+              name: "newIntern",
+              type: "address",
+              indexed: true,
+              internalType: "address",
+            },
+          ],
+          anonymous: false,
+        },
+        {
+          type: "event",
+          name: "OwnershipTransferStarted",
+          inputs: [
+            {
+              name: "previousOwner",
+              type: "address",
+              indexed: true,
+              internalType: "address",
+            },
+            {
+              name: "newOwner",
+              type: "address",
+              indexed: true,
+              internalType: "address",
+            },
+          ],
+          anonymous: false,
+        },
+        {
+          type: "event",
+          name: "OwnershipTransferred",
+          inputs: [
+            {
+              name: "previousOwner",
+              type: "address",
+              indexed: true,
+              internalType: "address",
+            },
+            {
+              name: "newOwner",
+              type: "address",
+              indexed: true,
+              internalType: "address",
+            },
+          ],
+          anonymous: false,
+        },
+        {
+          type: "event",
+          name: "ParamsUpdated",
+          inputs: [
+            {
+              name: "gainCapBps",
+              type: "uint256",
+              indexed: false,
+              internalType: "uint256",
+            },
+            {
+              name: "streamLength",
+              type: "uint64",
+              indexed: false,
+              internalType: "uint64",
+            },
+            {
+              name: "cooldown",
+              type: "uint64",
+              indexed: false,
+              internalType: "uint64",
+            },
+          ],
+          anonymous: false,
+        },
+        {
+          type: "event",
+          name: "Slashed",
+          inputs: [
+            {
+              name: "termId",
+              type: "uint256",
+              indexed: true,
+              internalType: "uint256",
+            },
+            {
+              name: "vestedKept",
+              type: "uint256",
+              indexed: false,
+              internalType: "uint256",
+            },
+            {
+              name: "returned",
+              type: "uint256",
+              indexed: false,
+              internalType: "uint256",
+            },
+            {
+              name: "reason",
+              type: "string",
+              indexed: false,
+              internalType: "string",
+            },
+          ],
+          anonymous: false,
+        },
+        {
+          type: "event",
+          name: "TermCancelled",
+          inputs: [
+            {
+              name: "termId",
+              type: "uint256",
+              indexed: true,
+              internalType: "uint256",
+            },
+            {
+              name: "returned",
+              type: "uint256",
+              indexed: false,
+              internalType: "uint256",
+            },
+          ],
+          anonymous: false,
+        },
+        {
+          type: "event",
+          name: "TermClosed",
+          inputs: [
+            {
+              name: "termId",
+              type: "uint256",
+              indexed: true,
+              internalType: "uint256",
+            },
+            {
+              name: "markOut",
+              type: "uint256",
+              indexed: false,
+              internalType: "uint256",
+            },
+            {
+              name: "gainBps",
+              type: "uint256",
+              indexed: false,
+              internalType: "uint256",
+            },
+            {
+              name: "payout",
+              type: "uint256",
+              indexed: false,
+              internalType: "uint256",
+            },
+            {
+              name: "surplus",
+              type: "uint256",
+              indexed: false,
+              internalType: "uint256",
+            },
+          ],
+          anonymous: false,
+        },
+        {
+          type: "event",
+          name: "TermOpened",
+          inputs: [
+            {
+              name: "termId",
+              type: "uint256",
+              indexed: true,
+              internalType: "uint256",
+            },
+            {
+              name: "intern",
+              type: "address",
+              indexed: true,
+              internalType: "address",
+            },
+            {
+              name: "markIn",
+              type: "uint256",
+              indexed: false,
+              internalType: "uint256",
+            },
+            {
+              name: "budget",
+              type: "uint256",
+              indexed: false,
+              internalType: "uint256",
+            },
+            {
+              name: "start",
+              type: "uint64",
+              indexed: false,
+              internalType: "uint64",
+            },
+            {
+              name: "end",
+              type: "uint64",
+              indexed: false,
+              internalType: "uint64",
+            },
+            {
+              name: "capBps",
+              type: "uint256",
+              indexed: false,
+              internalType: "uint256",
+            },
+            {
+              name: "streamLen",
+              type: "uint64",
+              indexed: false,
+              internalType: "uint64",
+            },
+          ],
+          anonymous: false,
+        },
+        {
+          type: "error",
+          name: "CannotRescueClawd",
+          inputs: [],
+        },
+        {
+          type: "error",
+          name: "InternOnCooldown",
+          inputs: [],
+        },
+        {
+          type: "error",
+          name: "NoActiveTerm",
+          inputs: [],
+        },
+        {
+          type: "error",
+          name: "NothingToClaim",
+          inputs: [],
+        },
+        {
+          type: "error",
+          name: "NothingToSlash",
+          inputs: [],
+        },
+        {
+          type: "error",
+          name: "OwnableInvalidOwner",
+          inputs: [
+            {
+              name: "owner",
+              type: "address",
+              internalType: "address",
+            },
+          ],
+        },
+        {
+          type: "error",
+          name: "OwnableUnauthorizedAccount",
+          inputs: [
+            {
+              name: "account",
+              type: "address",
+              internalType: "address",
+            },
+          ],
+        },
+        {
+          type: "error",
+          name: "ReentrancyGuardReentrantCall",
+          inputs: [],
+        },
+        {
+          type: "error",
+          name: "RenounceDisabled",
+          inputs: [],
+        },
+        {
+          type: "error",
+          name: "SafeERC20FailedOperation",
+          inputs: [
+            {
+              name: "token",
+              type: "address",
+              internalType: "address",
+            },
+          ],
+        },
+        {
+          type: "error",
+          name: "SlashTooEarly",
+          inputs: [],
+        },
+        {
+          type: "error",
+          name: "TermAlreadyActive",
+          inputs: [],
+        },
+        {
+          type: "error",
+          name: "TermAlreadySettled",
+          inputs: [],
+        },
+        {
+          type: "error",
+          name: "TermNotClosed",
+          inputs: [],
+        },
+        {
+          type: "error",
+          name: "TermStillRunning",
+          inputs: [],
+        },
+        {
+          type: "error",
+          name: "TransferAmountMismatch",
+          inputs: [],
+        },
+        {
+          type: "error",
+          name: "ZeroAddress",
+          inputs: [],
+        },
+        {
+          type: "error",
+          name: "ZeroAmount",
+          inputs: [],
+        },
+      ],
+      inheritedFunctions: {},
+      deployedOnBlock: 49727490,
+    },
+  },
+} as const;
 
 export default deployedContracts satisfies GenericContractsDeclaration;

@@ -114,3 +114,11 @@ adjacent; document per-intern expectations off-chain.
 
 Phase 5 (issues): M-1 filed as a GitHub issue on `clawdbotatg/clawd-intern`
 per the pipeline (Medium+ only).
+
+---
+
+**Post-audit note (2026-08-08, same day):** the contract was redeployed
+through the SE-2-canonical flow to
+`0xD390486ab72ED8af1EE06F1060E9663aAbfe2A55` (Basescan + Sourcify verified).
+Source is byte-identical to the audited code, so every finding above applies
+unchanged; the old address (`0xc447bC…dcCD`) was never used and is retired.

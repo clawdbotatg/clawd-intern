@@ -6,11 +6,12 @@ import { zeroAddress } from "viem";
 import { useAccount } from "wagmi";
 import { OwnerPanel } from "~~/components/clawd/OwnerPanel";
 import { TermCard } from "~~/components/clawd/TermCard";
+import deployedContracts from "~~/contracts/deployedContracts";
 import externalContracts from "~~/contracts/externalContracts";
 import { useScaffoldReadContract, useTargetNetwork } from "~~/hooks/scaffold-eth";
 import { useClawdPrice } from "~~/hooks/useClawdPrice";
 
-const CLAWD_INTERN_ADDRESS = externalContracts[8453].ClawdIntern.address;
+const CLAWD_INTERN_ADDRESS = deployedContracts[8453].ClawdIntern.address;
 const CLAWD_ADDRESS = externalContracts[8453].CLAWD.address;
 
 const Home: NextPage = () => {

@@ -15,13 +15,19 @@ Full mechanism design, anti-gaming analysis, legal posture, and roadmap:
 
 ## Deployment
 
-**Base mainnet: [`0xc447bC73F4101726Ae4496C3586047b5F920dcCD`](https://basescan.org/address/0xc447bC73F4101726Ae4496C3586047b5F920dcCD)**
-— deployed 2026-08-07 (tx `0x4f897148…26ff`), source verified on Sourcify
-(exact match). Params: CLAWD `0x9f86dB9f…6b07`, gainCapBps 5000 (+50% = full
-budget), streamLength 30 days, cooldown 28 days. Owner: `0x7E6Db18a…C471`
-(leftclaw ops wallet; Ownable2Step — transferable to a Safe later). Audited at
-`a85a852` by One Dollar Audit (job 572, `audit/onedollaraudit-572.md`); all
-findings fixed in `eab8d79`, which is the deployed code.
+**Base mainnet: [`0xD390486ab72ED8af1EE06F1060E9663aAbfe2A55`](https://basescan.org/address/0xD390486ab72ED8af1EE06F1060E9663aAbfe2A55)**
+— deployed 2026-08-08 via the SE-2 flow (`yarn deploy --network base`), source
+verified on Basescan, Sourcify and Blockscout. Params: CLAWD `0x9f86dB9f…6b07`,
+gainCapBps 5000 (+50% = full budget), streamLength 30 days, cooldown 28 days.
+Owner: `0x7E6Db18a…C471` (leftclaw ops wallet; Ownable2Step — transferable to
+a Safe later).
+
+Audit trail (identical source both deployments): One Dollar Audit job 572
+(`audit/onedollaraudit-572.md`, fixes in `eab8d79`) + the ethskills
+evm-audit-skills pipeline (`audit/evm-audit-2026-08-08/AUDIT-REPORT.md`,
+0C/0H/1M — M-1 tracked as issue #1). Supersedes the pre-SE-2 deploy at
+[`0xc447bC…dcCD`](https://basescan.org/address/0xc447bC73F4101726Ae4496C3586047b5F920dcCD)
+(2026-08-07, also verified, never used — no term was ever opened).
 
 ## Contract
 
