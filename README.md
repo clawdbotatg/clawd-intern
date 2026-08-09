@@ -1,6 +1,6 @@
-# clawd-intern
+# 🦞 clawd-intern
 
-On-chain stock options for a rotating growth hire.
+On-chain stock options for a rotating growth hire — a Scaffold-ETH 2 dApp on Base.
 
 An **intern** address is appointed for a fixed term (~2 weeks). A **$CLAWD
 budget is locked** at open. The owner marks the token's USD price at open and
@@ -25,7 +25,7 @@ findings fixed in `eab8d79`, which is the deployed code.
 
 ## Contract
 
-`src/ClawdIntern.sol` — single contract, Base.
+`packages/foundry/contracts/ClawdIntern.sol` — single contract, Base.
 
 | Function | Who | What |
 |---|---|---|
@@ -42,15 +42,34 @@ no oracle, nothing to flash-loan. Every mark is emitted in an event, so a
 dishonest mark is publicly provable against any chart. Oracle upgrade path in
 [PLAN.md](PLAN.md) §2.
 
-## Dev
+## App
+
+Scaffold-ETH 2 monorepo:
+
+- `packages/foundry` — the contract, 32 Foundry tests (fuzzed payout math +
+  vesting), deploy scripts, and the Base broadcast record.
+- `packages/nextjs` — the dashboard at `/`: current intern + term status,
+  vesting stream progress, permissionless claim, past-term history, and an
+  owner console (open/close/cancel/slash/reassign) that only renders for the
+  contract owner. `/debug` gives raw access to every function. The frontend
+  talks to the live Base contract via `contracts/externalContracts.ts`.
 
 ```bash
-forge build
-forge test          # 29 tests incl. fuzzed payout math + vesting
-forge script script/DeployClawdIntern.s.sol --rpc-url base --broadcast --verify
+yarn install
+yarn fork --network base   # terminal 1: anvil fork of Base (real CLAWD exists)
+yarn deploy                # terminal 2: local deploy for development
+yarn start                 # terminal 3: Next.js at localhost:3000
+
+yarn foundry:test          # 32 tests
 ```
+
+Against production there is nothing to deploy — the app reads the live
+contract on Base. Set `NEXT_PUBLIC_ALCHEMY_API_KEY` in
+`packages/nextjs/.env.local` (never commit keys).
 
 $CLAWD (Base): `0x9f86dB9fc6f7c9408e8Fda3Ff8ce4e78ac7a6b07`
 
 Built following [ethskills.com](https://ethskills.com). Audited via
-[onedollaraudit.com](https://onedollaraudit.com).
+[onedollaraudit.com](https://onedollaraudit.com) + the
+[evm-audit-skills](https://github.com/austintgriffith/evm-audit-skills)
+checklist pipeline (`audit/`).
