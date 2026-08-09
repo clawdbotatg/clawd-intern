@@ -15,19 +15,23 @@ Full mechanism design, anti-gaming analysis, legal posture, and roadmap:
 
 ## Deployment
 
-**Base mainnet: [`0xD390486ab72ED8af1EE06F1060E9663aAbfe2A55`](https://basescan.org/address/0xD390486ab72ED8af1EE06F1060E9663aAbfe2A55)**
-— deployed 2026-08-08 via the SE-2 flow (`yarn deploy --network base`), source
-verified on Basescan, Sourcify and Blockscout. Params: CLAWD `0x9f86dB9f…6b07`,
+**Base mainnet: [`0x65604a8709AfeF464d67AAab8EFB030F5676f489`](https://basescan.org/address/0x65604a8709AfeF464d67AAab8EFB030F5676f489)**
+— deployed 2026-08-09 via the SE-2 flow (`yarn deploy --network base`), source
+verified on Basescan. Params: CLAWD `0x9f86dB9f…6b07`,
 gainCapBps 5000 (+50% = full budget), streamLength 30 days, cooldown 28 days.
 Owner: `0x7E6Db18a…C471` (leftclaw ops wallet; Ownable2Step — transferable to
 a Safe later).
 
-Audit trail (identical source both deployments): One Dollar Audit job 572
-(`audit/onedollaraudit-572.md`, fixes in `eab8d79`) + the ethskills
-evm-audit-skills pipeline (`audit/evm-audit-2026-08-08/AUDIT-REPORT.md`,
-0C/0H/1M — M-1 tracked as issue #1). Supersedes the pre-SE-2 deploy at
+Audit trail: One Dollar Audit job 572 (`audit/onedollaraudit-572.md`, fixes in
+`eab8d79`) → the ethskills evm-audit-skills pipeline
+(`audit/evm-audit-2026-08-08/AUDIT-REPORT.md`, 0C/0H/1M — M-1 tracked as issue
+#1) → a second multi-agent audit (`audit/multi-agent-2026-08-09.md`, 0C/1H/3M/2L,
+fixes in `c207b61`). Each deploy below is retired, not migrated — none ever held
+CLAWD or opened a term:
+[`0xD390486a…2A55`](https://basescan.org/address/0xD390486ab72ED8af1EE06F1060E9663aAbfe2A55)
+(2026-08-08, superseded by the audit fixes) and
 [`0xc447bC…dcCD`](https://basescan.org/address/0xc447bC73F4101726Ae4496C3586047b5F920dcCD)
-(2026-08-07, also verified, never used — no term was ever opened).
+(2026-08-07, pre-SE-2).
 
 ## Contract
 

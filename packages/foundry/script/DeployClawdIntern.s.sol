@@ -8,11 +8,13 @@ import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
 /// Deploy script for ClawdIntern.
 ///
-/// Production deployment (Base, 2026-08-08): 0xD390486ab72ED8af1EE06F1060E9663aAbfe2A55
-/// via `yarn deploy --network base` (Basescan + Sourcify verified; broadcast in
-/// broadcast/Deploy.s.sol/8453/). Supersedes the pre-SE-2 deploy at
-/// 0xc447bC73F4101726Ae4496C3586047b5F920dcCD (2026-08-07, never used — no term
-/// ever opened; its broadcast record is in broadcast/DeployClawdIntern.s.sol/8453/).
+/// Production deployment (Base, 2026-08-09): 0x65604a8709AfeF464d67AAab8EFB030F5676f489
+/// via `yarn deploy --network base` (Basescan verified; broadcast in
+/// broadcast/Deploy.s.sol/8453/). Supersedes two earlier deploys, neither of
+/// which ever held CLAWD or opened a term: 0xD390486ab72ED8af1EE06F1060E9663aAbfe2A55
+/// (2026-08-08, retired by the multi-agent audit fixes in c207b61) and
+/// 0xc447bC73F4101726Ae4496C3586047b5F920dcCD (2026-08-07, pre-SE-2; its
+/// broadcast record is in broadcast/DeployClawdIntern.s.sol/8453/).
 ///
 /// yarn deploy                                            # local anvil / base fork
 /// yarn deploy --network base --keystore <account>        # production

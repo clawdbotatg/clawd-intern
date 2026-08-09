@@ -7,7 +7,7 @@ import { GenericContractsDeclaration } from "~~/utils/scaffold-eth/contract";
 const deployedContracts = {
   8453: {
     ClawdIntern: {
-      address: "0xd390486ab72ed8af1ee06f1060e9663aabfe2a55",
+      address: "0x65604a8709afef464d67aaab8efb030f5676f489",
       abi: [
         {
           type: "constructor",
@@ -367,6 +367,19 @@ const deployedContracts = {
         },
         {
           type: "function",
+          name: "ownerOwed",
+          inputs: [],
+          outputs: [
+            {
+              name: "",
+              type: "uint256",
+              internalType: "uint256",
+            },
+          ],
+          stateMutability: "view",
+        },
+        {
+          type: "function",
           name: "pendingOwner",
           inputs: [],
           outputs: [
@@ -586,6 +599,13 @@ const deployedContracts = {
           stateMutability: "nonpayable",
         },
         {
+          type: "function",
+          name: "withdrawOwed",
+          inputs: [],
+          outputs: [],
+          stateMutability: "nonpayable",
+        },
+        {
           type: "event",
           name: "Claimed",
           inputs: [
@@ -631,6 +651,44 @@ const deployedContracts = {
               type: "address",
               indexed: true,
               internalType: "address",
+            },
+          ],
+          anonymous: false,
+        },
+        {
+          type: "event",
+          name: "OwnerCredited",
+          inputs: [
+            {
+              name: "owner",
+              type: "address",
+              indexed: true,
+              internalType: "address",
+            },
+            {
+              name: "amount",
+              type: "uint256",
+              indexed: false,
+              internalType: "uint256",
+            },
+          ],
+          anonymous: false,
+        },
+        {
+          type: "event",
+          name: "OwnerWithdrew",
+          inputs: [
+            {
+              name: "owner",
+              type: "address",
+              indexed: true,
+              internalType: "address",
+            },
+            {
+              name: "amount",
+              type: "uint256",
+              indexed: false,
+              internalType: "uint256",
             },
           ],
           anonymous: false,
@@ -847,12 +905,22 @@ const deployedContracts = {
         },
         {
           type: "error",
+          name: "CapTooLarge",
+          inputs: [],
+        },
+        {
+          type: "error",
           name: "InternOnCooldown",
           inputs: [],
         },
         {
           type: "error",
           name: "NoActiveTerm",
+          inputs: [],
+        },
+        {
+          type: "error",
+          name: "NothingOwed",
           inputs: [],
         },
         {
@@ -915,6 +983,11 @@ const deployedContracts = {
         },
         {
           type: "error",
+          name: "StreamTooShort",
+          inputs: [],
+        },
+        {
+          type: "error",
           name: "TermAlreadyActive",
           inputs: [],
         },
@@ -950,7 +1023,7 @@ const deployedContracts = {
         },
       ],
       inheritedFunctions: {},
-      deployedOnBlock: 49727490,
+      deployedOnBlock: 49762184,
     },
   },
 } as const;
