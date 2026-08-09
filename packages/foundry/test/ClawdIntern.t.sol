@@ -1,11 +1,27 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
 
-import {Test} from "forge-std/Test.sol";
-import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
-import {ClawdIntern} from "../contracts/ClawdIntern.sol";
-import {MockClawd} from "../contracts/mocks/MockClawd.sol";
+import { Test } from "forge-std/Test.sol";
+import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import { Ownable } from "@openzeppelin/contracts/access/Ownable.sol";
+import { ClawdIntern } from "../contracts/ClawdIntern.sol";
+import { MockClawd } from "../contracts/mocks/MockClawd.sol";
+
+/// @notice CLAWD with a per-address denylist, for the owner-can't-receive tests.
+contract DenylistClawd is MockClawd {
+    mapping(address => bool) public blocked;
+
+    constructor(address mintTo) MockClawd(mintTo) { }
+
+    function setBlocked(address who, bool on) external {
+        blocked[who] = on;
+    }
+
+    function _update(address from, address to, uint256 value) internal override {
+        require(!blocked[to], "denylisted");
+        super._update(from, to, value);
+    }
+}
 
 contract ClawdInternTest is Test {
     ClawdIntern internal app;
@@ -51,6 +67,40 @@ contract ClawdInternTest is Test {
         new ClawdIntern(IERC20(address(clawd)), owner, 0, STREAM, COOLDOWN);
         vm.expectRevert(ClawdIntern.ZeroAmount.selector);
         new ClawdIntern(IERC20(address(clawd)), owner, GAIN_CAP_BPS, 0, COOLDOWN);
+
+        // reward token must be real code — _payOwner's low-level call would
+        // read an EOA's empty returndata as a successful transfer.
+        vm.expectRevert(ClawdIntern.ZeroAddress.selector);
+        new ClawdIntern(IERC20(rando), owner, GAIN_CAP_BPS, STREAM, COOLDOWN);
+
+        uint256 maxCap = 100 * app.BPS();
+        uint64 minStream = app.SLASH_DELAY();
+
+        // finding 5: an oversized cap is the divisor that floors payout to 0.
+        vm.expectRevert(ClawdIntern.CapTooLarge.selector);
+        new ClawdIntern(IERC20(address(clawd)), owner, maxCap + 1, STREAM, COOLDOWN);
+
+        // finding 6: a stream shorter than SLASH_DELAY is fully vested before
+        // it is ever slashable, silently disabling slash for that term.
+        vm.expectRevert(ClawdIntern.StreamTooShort.selector);
+        new ClawdIntern(IERC20(address(clawd)), owner, GAIN_CAP_BPS, minStream, COOLDOWN);
+    }
+
+    function test_RevertWhen_SetParamsOutOfBounds() public {
+        uint256 maxCap = 100 * app.BPS();
+        uint64 minStream = app.SLASH_DELAY();
+
+        vm.startPrank(owner);
+        vm.expectRevert(ClawdIntern.CapTooLarge.selector);
+        app.setParams(maxCap + 1, STREAM, COOLDOWN);
+
+        vm.expectRevert(ClawdIntern.StreamTooShort.selector);
+        app.setParams(GAIN_CAP_BPS, minStream, COOLDOWN);
+
+        app.setParams(maxCap, minStream + 1, COOLDOWN); // the bounds themselves are allowed
+        assertEq(app.gainCapBps(), maxCap);
+        assertEq(app.streamLength(), minStream + 1);
+        vm.stopPrank();
     }
 
     // ------------------------------------------------------------- openTerm
@@ -354,7 +404,7 @@ contract ClawdInternTest is Test {
 
     // ------------------------------------------------------------- reassign
 
-    function test_ReassignInternRedirectsStream() public {
+    function test_ReassignInternRedirectsUnvestedRemainderOnly() public {
         // audit F2: recovery path when the recorded intern can't receive tokens
         uint256 id = _openAndClose(MARK_IN * 10);
         address heir = makeAddr("heir");
@@ -362,10 +412,43 @@ contract ClawdInternTest is Test {
         vm.warp(block.timestamp + STREAM / 2);
         vm.prank(owner);
         app.reassignIntern(id, heir);
+        assertEq(clawd.balanceOf(intern), BUDGET / 2, "vested half settles to the old intern");
 
+        vm.warp(block.timestamp + STREAM / 2);
         app.claim(id);
-        assertEq(clawd.balanceOf(heir), BUDGET / 2, "claim pays the new intern");
-        assertEq(clawd.balanceOf(intern), 0);
+        assertEq(clawd.balanceOf(heir), BUDGET / 2, "claim pays the new intern the rest");
+        assertEq(clawd.balanceOf(intern), BUDGET / 2, "old intern keeps what had vested");
+    }
+
+    function test_ReassignCannotSeizeFullyVestedPayout() public {
+        // audit 2026-08-09 finding 1 (High): reassign was a delay-free,
+        // reason-free superset of slash — it could redirect 100%-vested,
+        // unclaimed CLAWD to any address. It must settle to the old intern.
+        uint256 id = _openAndClose(MARK_IN * 10); // gain >= cap → payout == BUDGET
+        address ownerAlt = makeAddr("ownerAlt");
+
+        vm.warp(block.timestamp + STREAM); // fully vested, nothing claimed yet
+        assertEq(app.claimable(id), BUDGET);
+
+        vm.prank(owner);
+        app.reassignIntern(id, ownerAlt);
+
+        assertEq(clawd.balanceOf(intern), BUDGET, "vested payout went to the intern");
+        assertEq(clawd.balanceOf(ownerAlt), 0);
+        assertEq(app.claimable(id), 0, "nothing left to redirect");
+    }
+
+    function test_RevertWhen_InternIsTheContractItself() public {
+        // audit finding 2 (Medium): claim()'s self-transfer is a balance no-op
+        // but still marks the slice claimed — an unrecoverable burn.
+        vm.prank(owner);
+        vm.expectRevert(ClawdIntern.ZeroAddress.selector);
+        app.openTerm(address(app), MARK_IN, BUDGET, TERM);
+
+        uint256 id = _openAndClose(MARK_IN * 10);
+        vm.prank(owner);
+        vm.expectRevert(ClawdIntern.ZeroAddress.selector);
+        app.reassignIntern(id, address(app));
     }
 
     function test_RevertWhen_ReassignInvalid() public {
@@ -447,6 +530,14 @@ contract ClawdInternTest is Test {
 
     function test_RevertWhen_SlashFlatCloseTerm() public {
         uint256 id = _openAndClose(MARK_IN); // flat → payout 0
+
+        // I-4: the delay gate is checked first, so "too early" reads as
+        // SlashTooEarly rather than the vaguer NothingToSlash.
+        vm.prank(owner);
+        vm.expectRevert(ClawdIntern.SlashTooEarly.selector);
+        app.slash(id, "breach");
+
+        vm.warp(block.timestamp + app.SLASH_DELAY());
         vm.prank(owner);
         vm.expectRevert(ClawdIntern.NothingToSlash.selector);
         app.slash(id, "breach");
@@ -511,5 +602,81 @@ contract ClawdInternTest is Test {
         vm.prank(owner);
         app.rescue(IERC20(address(other)), owner, 100e18);
         assertEq(other.balanceOf(owner), 100e18);
+    }
+
+    // ------------------------------------------- owner can't receive (F3)
+
+    /// Rebuild the fixture on a denylist-capable token so the owner's refund
+    /// leg can be made to fail.
+    function _denylistFixture() internal returns (DenylistClawd token, ClawdIntern app2) {
+        vm.startPrank(owner);
+        token = new DenylistClawd(owner);
+        app2 = new ClawdIntern(IERC20(address(token)), owner, GAIN_CAP_BPS, STREAM, COOLDOWN);
+        token.approve(address(app2), type(uint256).max);
+        vm.stopPrank();
+    }
+
+    function test_CloseFinalizesEvenWhenOwnerCannotReceive() public {
+        // audit finding 3 (Medium): the trailing push to owner() used to revert
+        // the whole tx, so activeTermId stayed pinned to a term that could
+        // never close — no future openTerm, no claim, no reassign escape hatch.
+        (DenylistClawd token, ClawdIntern app2) = _denylistFixture();
+
+        vm.prank(owner);
+        uint256 id = app2.openTerm(intern, MARK_IN, BUDGET, TERM);
+        token.setBlocked(owner, true);
+
+        vm.warp(block.timestamp + TERM);
+        vm.prank(owner);
+        app2.closeTerm(MARK_IN + MARK_IN / 4); // +25% of a +50% cap → half payout
+
+        assertEq(app2.activeTermId(), app2.NONE(), "term finalized despite the failed push");
+        assertEq(app2.ownerOwed(), BUDGET / 2, "surplus credited for later pull");
+        assertEq(app2.getTerm(id).payout, BUDGET / 2);
+
+        // the intern's stream is unaffected by the owner's broken address
+        vm.warp(block.timestamp + STREAM);
+        app2.claim(id);
+        assertEq(token.balanceOf(intern), BUDGET / 2);
+
+        // and a new term can still open
+        vm.prank(owner);
+        app2.openTerm(rando, MARK_IN, BUDGET, TERM);
+
+        token.setBlocked(owner, false);
+        uint256 ownerBefore = token.balanceOf(owner);
+        app2.withdrawOwed(); // permissionless, destination fixed to owner()
+        assertEq(token.balanceOf(owner), ownerBefore + BUDGET / 2);
+        assertEq(app2.ownerOwed(), 0);
+
+        vm.expectRevert(ClawdIntern.NothingOwed.selector);
+        app2.withdrawOwed();
+    }
+
+    function test_CancelAndSlashCreditOwnerWhenPushFails() public {
+        (DenylistClawd token, ClawdIntern app2) = _denylistFixture();
+
+        vm.prank(owner);
+        app2.openTerm(intern, MARK_IN, BUDGET, TERM);
+        token.setBlocked(owner, true);
+
+        vm.prank(owner);
+        app2.cancelTerm();
+        assertEq(app2.activeTermId(), app2.NONE(), "cancel finalized");
+        assertEq(app2.ownerOwed(), BUDGET, "full budget credited");
+
+        // now a closed term with a live stream, slashed while owner is blocked
+        vm.warp(block.timestamp + COOLDOWN);
+        vm.prank(owner);
+        uint256 id = app2.openTerm(rando, MARK_IN, BUDGET, TERM);
+        vm.warp(block.timestamp + TERM);
+        vm.prank(owner);
+        app2.closeTerm(MARK_IN * 10); // full budget payout, no surplus
+
+        vm.warp(block.timestamp + STREAM / 2);
+        vm.prank(owner);
+        app2.slash(id, "breach");
+        assertEq(app2.ownerOwed(), BUDGET + BUDGET / 2, "slashed remainder credited too");
+        assertEq(app2.getTerm(id).payout, BUDGET / 2, "intern keeps what vested");
     }
 }

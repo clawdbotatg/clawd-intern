@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
 
-import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
-import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
-import {Ownable2Step} from "@openzeppelin/contracts/access/Ownable2Step.sol";
-import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import { SafeERC20 } from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import { Ownable } from "@openzeppelin/contracts/access/Ownable.sol";
+import { Ownable2Step } from "@openzeppelin/contracts/access/Ownable2Step.sol";
+import { ReentrancyGuard } from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 
 /// @title ClawdIntern — rotating growth-intern terms rewarded in CLAWD
 ///
@@ -22,12 +22,19 @@ import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol
 /// a stream without cause (slash is rate-limited by SLASH_DELAY and requires
 /// a public reason, but the judgment itself is the owner's). Every mark,
 /// cancel, and slash is emitted onchain so bad faith is publicly provable.
-/// The owner also depends on being able to receive CLAWD: close/cancel/slash
-/// push tokens to owner(), so a denylisted owner address stalls those calls
-/// until ownership is transferred to a clean address (Ownable2Step moves no
-/// tokens). Refunds go to owner() at call time, not the address that funded
-/// the term. The mark parameters are designed to be replaced by an oracle in
-/// a later phase without changing the term/stream machinery.
+/// Owner-bound refunds (close surplus, cancel, slash) are pushed to owner()
+/// but never block state: a failed push is credited to ownerOwed and pulled
+/// later via withdrawOwed(), so a denylisted/reverting owner address can never
+/// wedge activeTermId and freeze future terms. Refunds go to owner() at call
+/// time, not the address that funded the term. The mark parameters are
+/// designed to be replaced by an oracle in a later phase without changing the
+/// term/stream machinery.
+///
+/// Token assumption: `clawd` is expected to be a plain, non-rebasing,
+/// non-fee-on-transfer ERC20 with no denylist (the deployed CLAWD is). A
+/// denylist-capable token that blocked THIS contract's own address would
+/// strand every locked balance, since rescue() refuses the reward token by
+/// design — do not deploy against such a token.
 contract ClawdIntern is Ownable2Step, ReentrancyGuard {
     using SafeERC20 for IERC20;
 
@@ -73,6 +80,10 @@ contract ClawdIntern is Ownable2Step, ReentrancyGuard {
     /// @notice timestamp each intern's last term ended (for cooldown).
     mapping(address => uint64) public lastTermEnd;
 
+    /// @notice CLAWD owed to the owner from a refund push that failed, pulled
+    /// with withdrawOwed(). Non-zero only if owner() cannot receive CLAWD.
+    uint256 public ownerOwed;
+
     event TermOpened(
         uint256 indexed termId,
         address indexed intern,
@@ -89,6 +100,8 @@ contract ClawdIntern is Ownable2Step, ReentrancyGuard {
     event Slashed(uint256 indexed termId, uint256 vestedKept, uint256 returned, string reason);
     event InternReassigned(uint256 indexed termId, address indexed oldIntern, address indexed newIntern);
     event ParamsUpdated(uint256 gainCapBps, uint64 streamLength, uint64 cooldown);
+    event OwnerCredited(address indexed owner, uint256 amount);
+    event OwnerWithdrew(address indexed owner, uint256 amount);
 
     error ZeroAddress();
     error ZeroAmount();
@@ -104,17 +117,18 @@ contract ClawdIntern is Ownable2Step, ReentrancyGuard {
     error TransferAmountMismatch();
     error RenounceDisabled();
     error SlashTooEarly();
+    error CapTooLarge();
+    error StreamTooShort();
+    error NothingOwed();
 
     constructor(IERC20 _clawd, address _owner, uint256 _gainCapBps, uint64 _streamLength, uint64 _cooldown)
         Ownable(_owner)
     {
-        if (address(_clawd) == address(0)) revert ZeroAddress();
-        if (_gainCapBps == 0) revert ZeroAmount();
-        if (_streamLength == 0) revert ZeroAmount();
+        // _payOwner's low-level call would read an EOA's empty returndata as a
+        // successful transfer, so the reward token must be real code.
+        if (address(_clawd) == address(0) || address(_clawd).code.length == 0) revert ZeroAddress();
         clawd = _clawd;
-        gainCapBps = _gainCapBps;
-        streamLength = _streamLength;
-        cooldown = _cooldown;
+        _setParams(_gainCapBps, _streamLength, _cooldown);
     }
 
     // ---------------------------------------------------------------- admin
@@ -128,7 +142,9 @@ contract ClawdIntern is Ownable2Step, ReentrancyGuard {
         returns (uint256 termId)
     {
         if (activeTermId != NONE) revert TermAlreadyActive();
-        if (intern == address(0)) revert ZeroAddress();
+        // address(this) would make claim()'s transfer a balance no-op while
+        // still marking the slice claimed — an unrecoverable burn.
+        if (intern == address(0) || intern == address(this)) revert ZeroAddress();
         if (markIn == 0 || budget == 0 || termLength == 0) revert ZeroAmount();
         uint64 last = lastTermEnd[intern];
         if (last != 0 && block.timestamp < uint256(last) + cooldown) revert InternOnCooldown();
@@ -191,12 +207,14 @@ contract ClawdIntern is Ownable2Step, ReentrancyGuard {
         lastTermEnd[t.intern] = uint64(block.timestamp);
         emit TermClosed(termId, markOut, gainBps, payout, surplus);
 
-        if (surplus > 0) clawd.safeTransfer(owner(), surplus);
+        _payOwner(surplus);
     }
 
-    /// @notice Mid-term kill switch (rogue intern / emergency): returns the
-    /// full budget to the owner, no payout. Phase 0 accepts that the owner
-    /// can end a term in bad faith — the event trail makes it public.
+    /// @notice Kill switch (rogue intern / emergency): returns the full budget
+    /// to the owner, no payout. Phase 0 accepts that the owner can end a term
+    /// in bad faith — the event trail makes it public. Not bounded by t.end:
+    /// an expired-but-unclosed term can still be cancelled instead of closed,
+    /// which is the same owner-trust surface as controlling close timing.
     function cancelTerm() external onlyOwner nonReentrant {
         uint256 termId = activeTermId;
         if (termId == NONE) revert NoActiveTerm();
@@ -207,7 +225,7 @@ contract ClawdIntern is Ownable2Step, ReentrancyGuard {
         lastTermEnd[t.intern] = uint64(block.timestamp);
         emit TermCancelled(termId, t.budget);
 
-        clawd.safeTransfer(owner(), t.budget);
+        _payOwner(t.budget);
     }
 
     /// @notice Cancel the unvested remainder of a closed term's stream
@@ -219,36 +237,62 @@ contract ClawdIntern is Ownable2Step, ReentrancyGuard {
         Term storage t = terms[termId];
         if (t.closedAt == 0) revert TermNotClosed();
         if (t.slashed) revert TermAlreadySettled();
+        if (block.timestamp < uint256(t.closedAt) + SLASH_DELAY) revert SlashTooEarly();
 
         uint256 vested = _vested(t);
         uint256 returned = t.payout - vested;
         if (returned == 0) revert NothingToSlash();
-        if (block.timestamp < uint256(t.closedAt) + SLASH_DELAY) revert SlashTooEarly();
 
         t.payout = vested;
         t.slashed = true;
         emit Slashed(termId, vested, returned, reason);
 
-        clawd.safeTransfer(owner(), returned);
+        _payOwner(returned);
     }
 
-    /// @notice Redirect a closed term's remaining stream to a new address —
+    /// @notice Redirect a closed term's UNVESTED remainder to a new address —
     /// the escape hatch for an intern account that can no longer receive
     /// CLAWD (bricked wallet, token-level denylist). Without it that term's
-    /// vested-but-unclaimed balance would be stranded forever, since claim()
-    /// only ever pays t.intern and rescue() refuses CLAWD.
-    function reassignIntern(uint256 termId, address newIntern) external onlyOwner {
+    /// future stream would be stranded forever, since claim() only ever pays
+    /// t.intern and rescue() refuses CLAWD.
+    /// @dev Anything already vested is settled to the OLD intern first, in the
+    /// same transaction. Otherwise reassign would be a delay-free, reason-free
+    /// superset of slash — able to seize vested funds that slash may never
+    /// touch — which would falsify the SLASH_DELAY vesting floor above. If the
+    /// old address genuinely cannot receive, that leg reverts and the term must
+    /// be slashed instead; only the unvested part is ever redirectable.
+    function reassignIntern(uint256 termId, address newIntern) external onlyOwner nonReentrant {
         Term storage t = terms[termId];
         if (t.closedAt == 0) revert TermNotClosed();
-        if (newIntern == address(0)) revert ZeroAddress();
+        if (newIntern == address(0) || newIntern == address(this)) revert ZeroAddress();
 
-        emit InternReassigned(termId, t.intern, newIntern);
+        uint256 owed = _vested(t) - t.claimed;
+        address oldIntern = t.intern;
+        if (owed > 0) {
+            t.claimed += owed;
+            emit Claimed(termId, oldIntern, owed);
+        }
+
+        emit InternReassigned(termId, oldIntern, newIntern);
         t.intern = newIntern;
+
+        if (owed > 0) clawd.safeTransfer(oldIntern, owed);
     }
 
     /// @notice Update params for FUTURE terms only (open terms captured theirs).
     function setParams(uint256 _gainCapBps, uint64 _streamLength, uint64 _cooldown) external onlyOwner {
+        _setParams(_gainCapBps, _streamLength, _cooldown);
+    }
+
+    /// @dev gainCapBps is the divisor in closeTerm's payout formula, so an
+    /// oversized cap floors an honest payout toward zero — bound it at 100x BPS
+    /// (a 100x price gain earning the full budget). streamLength must outlast
+    /// SLASH_DELAY, or a term is fully vested before it is ever slashable and
+    /// slash() reverts NothingToSlash for that term's whole life.
+    function _setParams(uint256 _gainCapBps, uint64 _streamLength, uint64 _cooldown) internal {
         if (_gainCapBps == 0 || _streamLength == 0) revert ZeroAmount();
+        if (_gainCapBps > 100 * BPS) revert CapTooLarge();
+        if (_streamLength <= SLASH_DELAY) revert StreamTooShort();
         gainCapBps = _gainCapBps;
         streamLength = _streamLength;
         cooldown = _cooldown;
@@ -262,6 +306,35 @@ contract ClawdIntern is Ownable2Step, ReentrancyGuard {
         if (to == address(0)) revert ZeroAddress();
         if (amount == 0) revert ZeroAmount();
         token.safeTransfer(to, amount);
+    }
+
+    /// @notice Pull the owner's refunds that a push couldn't deliver.
+    /// Permissionless — like claim(), the destination is fixed to owner().
+    function withdrawOwed() external nonReentrant {
+        uint256 amount = ownerOwed;
+        if (amount == 0) revert NothingOwed();
+
+        ownerOwed = 0;
+        address o = owner();
+        emit OwnerWithdrew(o, amount);
+
+        clawd.safeTransfer(o, amount);
+    }
+
+    /// @dev Push a refund to owner(), crediting ownerOwed if the transfer
+    /// fails. close/cancel/slash finalize term state before calling this, and
+    /// a bubbling revert would undo that state too — leaving activeTermId
+    /// pinned to a term that can never close and blocking every future
+    /// openTerm. Liveness of the term machinery must not depend on the owner
+    /// address being able to receive.
+    function _payOwner(uint256 amount) internal {
+        if (amount == 0) return;
+        address o = owner();
+        (bool ok, bytes memory ret) = address(clawd).call(abi.encodeCall(IERC20.transfer, (o, amount)));
+        if (ok && (ret.length == 0 || (ret.length == 32 && abi.decode(ret, (bool))))) return;
+
+        ownerOwed += amount;
+        emit OwnerCredited(o, amount);
     }
 
     /// @notice Disabled: an ownerless ClawdIntern is a wedged one. Renouncing
